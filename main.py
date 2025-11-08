@@ -27,10 +27,12 @@ def main():
     #     model="gpt-4o-mini"
     # )
 
-    # ollama
+    # ollama models
+    model = "gemma3:latest"
+    # model = "gemma3:270m"
     llm = ChatOllama(
         temperature=0.5,
-        model="gemma3:270m"
+        model=model
     )
     #     chaining in LCEL
     chain = prompt_template | llm
