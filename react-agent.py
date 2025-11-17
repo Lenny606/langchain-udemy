@@ -7,6 +7,7 @@ from langchain_classic.agents.output_parsers.react_single_input import (
 )
 
 from langchain_classic.schema import AgentAction, AgentFinish
+from langchain_classic.agents.format_scratchpad import format_log_to_str
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from langchain_classic.tools import Tool
@@ -16,7 +17,7 @@ from langchain.agents import create_agent
 from langchain_core.output_parsers.pydantic import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda
-
+from callback import AgentCallbackHandler
 load_dotenv()
 
 o = hub.pull("hwchase17/react")
@@ -41,7 +42,8 @@ Final Answer: the final answer to the original input question
 Begin!
 
 Question: {input}
-Thought:"""
+Thought: {agent_scratchpad}
+"""
 
 
 @tool
@@ -82,21 +84,35 @@ Returns:
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.0,
+    callbacks={AgentCallbackHandler()},
     stop="Observation"  # stops llm generation when observation token is found, can be diff for every model
 )
 
+intermediate_steps = [] #adds kind of memory
+
 chain = {
-            "input": lambda x: x["input"]
+            "input": lambda x: x["input"],
+            "agent_scratchpad": lambda x: format_log_to_str(x["agent_scratchpad"])
         } | prompt | llm | ReActSingleInputOutputParser()
 
-chain_step: Union[AgentAction, AgentFinish] = chain.invoke({"input": "How many letters are in the word 'hello'?"})
+chain_step = ""
+while not isinstance(chain_step, AgentFinish):
+    chain_step: Union[AgentAction, AgentFinish] = chain.invoke(
+        {"input": "How many letters are in the word 'hello'?",
+         "agent_scratchpad": intermediate_steps
+         })
 
-if isinstance(chain_step, AgentAction):
-    print(f"Action: {chain_step}")
-    tool_name = chain_step.tool
-    tool_to_use = find_tool_by_name(tools, tool_name)
-    tool_input = chain_step.tool_input
+    if isinstance(chain_step, AgentAction):
+        print(f"Action: {chain_step}")
+        tool_name = chain_step.tool
+        tool_to_use = find_tool_by_name(tools, tool_name)
+        tool_input = chain_step.tool_input
 
-    observation = tool_to_use.func(tool_input)
-    print(f"Observation: {observation}")
-print(chain_step)
+        observation = tool_to_use.func(tool_input)
+        intermediate_steps.append((chain_step,observation)) #add to memory for new loo p
+        print(f"Observation: {observation}")
+
+
+if isinstance(chain_step, AgentFinish):
+    print(f"Final Answer: {chain_step.return_values['output']}")
+
