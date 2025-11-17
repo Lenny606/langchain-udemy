@@ -29,9 +29,15 @@ llm = ChatOpenAI(
 agent = create_agent(
     tools=tools,
     model=llm,
-    response_format=AgentResponse,
+    response_format=AgentResponse, #schema model is modern way
 )
 
+# takes result in chain flow
+extract_output = RunnableLambda(lambda x: x["output"])
+parses_output = RunnableLambda(lambda x: output_parser.parse(x))
+
+# deprecated
+# chain = custom_prompt | agent | extract_output | parses_output
 chain = custom_prompt | agent
 
 
